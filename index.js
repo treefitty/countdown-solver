@@ -1,150 +1,101 @@
-var argv = require('minimist')(process.argv.slice(2));
+const argv = require('minimist')(process.argv.slice(2));
+
+// Countdown rules: every intermediate result must be a positive integer.
+// Each op takes a >= b and returns 0 when the result isn't allowed.
+const ops = [
+    ['+', (a, b) => a + b],
+    ['*', (a, b) => a * b],
+    ['-', (a, b) => a - b],
+    ['/', (a, b) => (a % b === 0 ? a / b : 0)],
+];
+
+// An item is { val, e } where e is a number or [op, left, right].
+// Strings are only built for results worth reporting.
+// + and * sort their operands so a + b and b + a de-duplicate.
+function str(e) {
+    if (typeof e === 'number') return String(e);
+    const [op, l, r] = e;
+    const parts = [str(l), str(r)];
+    if (op === '+' || op === '*') parts.sort();
+    return `(${parts[0]} ${op} ${parts[1]})`;
+}
 
 /**
- * Array element swap function
- * 
- * WARNING: This will modify the array!
+ * Finds the expressions closest to `target` using any subset of `nums`.
+ * Repeatedly combines any two remaining items with any op, and records
+ * every item produced along the way (so subsets come for free).
+ *
+ * @returns {{ distance: number, solutions: { expr: string, val: number }[] }}
  */
-let swap = function(array, index1, index2) {
-    var temp = array[index1];
-    array[index1] = array[index2];
-    array[index2] = temp;
-    return array;
-};
-  
-/**
- * Heap's algorithm to permute the array combinations
- * https://paulrohan.medium.com/implemetning-heap-algorithm-to-find-permutation-of-a-set-of-numbers-in-javascript-d6b6ef8ee0e
- * 
- * WARNING: This will modify the array!
- */
-let permutationHeap = function(array, result, n) {
-    n = n || array.length; // set n default to array.length
+function solve(nums, target) {
+    let best = Infinity;
+    const found = new Map(); // expr -> val
 
-    if (n === 1) {
-        result(array);
-    } else {
-        for (var i = 1; i <= n; i++) {
-            permutationHeap(array, result, n - 1);
+    const record = ({ val, e }) => {
+        const d = Math.abs(val - target);
+        if (d > best) return;
+        if (d < best) {
+            best = d;
+            found.clear();
+        }
+        found.set(str(e), val);
+    };
 
-            if (n % 2) {
-                swap(array, 0, n - 1); // when length is odd so n % 2 is 1,  select the first number, then the second number, then the third number. . . to be swapped with the last number
-            } else {
-                swap(array, i - 1, n - 1); // when length is even so n % 2 is 0,  always select the first number with the last number
+    const search = items => {
+        for (let i = 0; i < items.length; i++) {
+            for (let j = i + 1; j < items.length; j++) {
+                const [x, y] = items[i].val >= items[j].val ? [items[i], items[j]] : [items[j], items[i]];
+                const rest = items.filter((_, k) => k !== i && k !== j);
+
+                for (const [op, fn] of ops) {
+                    const val = fn(x.val, y.val);
+                    if (val <= 0) continue;
+
+                    const item = { val, e: [op, x.e, y.e] };
+                    record(item);
+                    if (rest.length) search([...rest, item]);
+                }
             }
         }
-    }
-};
+    };
 
-/**
- * Recursively find all possible permutations of operators
- * against the set of values. This performs the calculations, and
- * tracks the equation that yielded each result.
- * 
- * e.g. Given the input n = 3, [a, b, c] we need to calculate the 
- * following permutations:
- * 
- *    a + b + c
- *    a + b - c
- *    a - b + c
- *    a - b - c
- *    a * b + c
- *    a * b / c
- * 
- * etc...
- */
-function solve(n, values) {
-    if (n <= 1) {
-        values[0].sln += values[0].val;
+    const items = nums.map(n => ({ val: n, e: n }));
+    items.forEach(record);
+    search(items);
 
-        // Return last element as a single element array, this
-        // will kick off the subsequent recursive evaluation
-        return values;
-    }
-
-    const peek = solve(n - 1, values.slice(1, n.length));
-    const m = values[0].val, r = [];
-    
-    peek.map(it => {
-        r.push({ val: m + it.val, sln: `(${m} + ${it.sln})` });
-        r.push({ val: m - it.val, sln: `(${m} - ${it.sln})` });
-        r.push({ val: m * it.val, sln: `(${m} * ${it.sln})` });
-        r.push({ val: m / it.val, sln: `(${m} / ${it.sln})` });
-    });
-
-    return r;
+    return { distance: best, solutions: [...found].map(([expr, val]) => ({ expr, val })) };
 }
 
-/**
- * Permutes all combinations of `set`
- * @param {*} set 
- * @param {*} target 
- */
-function findSolution(set, target) {
-    const perms = [];
-    var count = 0;
-
-    console.log(`Input values: ${set}`);
-    console.log(`Target: ${target}`);
-    console.log(`Solutions:`);
-
-    // Find all permutations of `set` and enumerate, solving for each
-    // While the permute operation uses the fast "Heap's algorithm" the solve
-    // approach is definitely brute force and there may be a faster way to approach it.
-    permutationHeap(set, perm => perms.push([...perm]));
-
-    perms.forEach((perm) => {
-        const row = perm.map(perm => ({ sln: '', val: perm }));
-        const res = solve(row.length, row);
-        
-        // Find and log all solutions
-        res.filter(it => it.val === target)
-            .forEach((match, k) => {
-                console.log(`(${count + k}) -> ${match.sln} = ${match.val}`);
-            });
-
-        count += res.length;
-    });
-
-    console.log(`Permutations: ${count}`);
+function fail(msg) {
+    console.error(`ERROR: ${msg}\n\n` +
+        'Usage: node index.js [--set "<numbers>" --target <number>]\n' +
+        '--set     Space or comma separated positive integers\n' +
+        '--target  Integer to reach (required if --set is given)');
+    process.exit(1);
 }
 
-/**
- * Main program entry point
- * Parse arguments and setup defaults if required
- */
 function main() {
-    var set = argv.set;
-    var target = argv.target;
+    let set = argv.set, target = argv.target;
 
-    // Set defaults if required
-    try {
-        if (!set) {
-            set = '50, 8, 3, 7, 2, 10';
-            target = 556;
-
-            console.log('Parameters not provided, using demo set -> [50 8 3 7 2 10] and target -> 556');
-        }
-        else {
-            if (!target) {
-                throw 'Missing --target';
-            }
-        }
-    }
-    catch (e) {
-        console.error('ERROR: ' + e);
-        console.log('\nUsage: npm index.js [options]\n' +
-            'Options:\n' + 
-            '--set "<value>"     Where value is a set of space separated integers\n' +
-            '--target <value>    Where value is the integer solution value to be found (required if set was provided)');
-
-        process.exit(0);
+    if (set === undefined) {
+        set = '50 8 3 7 2 10';
+        target = 556;
+        console.log('Parameters not provided, using demo set -> [50 8 3 7 2 10] and target -> 556');
     }
 
-    set = set.trim(' ').split(' ').map(i => parseInt(i, 10));
+    const nums = String(set).split(/[\s,]+/).filter(Boolean).map(Number);
+    if (!nums.length || !nums.every(n => Number.isInteger(n) && n > 0)) fail('--set must be positive integers');
+    if (!Number.isInteger(target)) fail('--target must be an integer');
 
-    findSolution(set, target);
+    const { distance, solutions } = solve(nums, target);
+
+    console.log(`Input values: ${nums}`);
+    console.log(`Target: ${target}`);
+    console.log(distance === 0 ? 'Solutions:' : `No exact solution, closest is ${distance} away:`);
+    solutions.forEach(s => console.log(`${s.expr} = ${s.val}`));
+    console.log(`Found: ${solutions.length}`);
 }
 
-main();
+if (require.main === module) main();
 
+module.exports = { solve };

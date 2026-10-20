@@ -17,62 +17,56 @@ To run the demo set
 npm start
 ```
 
-To invoke with your own set simply pass a list of space separated integers and a target value, like so:
+To invoke with your own set pass space (or comma) separated positive integers and a target value, like so:
 
 ```bash
-$> node index.js --set '3 6 10' --target 1
+$> node index.js --set '3 6 10' --target 9
 Input values: 3,6,10
-Target: 1
+Target: 9
 Solutions:
-(32) -> (10 - (3 + 6)) = 1
-(80) -> (10 - (6 + 3)) = 1
-Permutations: 96
+(3 + 6) = 9
+Found: 1
 ```
+
+If the target can't be reached exactly, the closest results are shown instead:
+
+```bash
+$> node index.js --set '1 1' --target 5
+Input values: 1,1
+Target: 5
+No exact solution, closest is 3 away:
+(1 + 1) = 2
+Found: 1
+```
+
+Run the checks with `npm test`.
 
 ## Example
 
-For example, given the set `[10, 50, 8, 3, 7, 2]` attempt to reach `556` could be done with `(3 - (7 + (10 * (2 - (50 + 8))))) = 556`. Checking the output of the program though shows us that there are actually a number of solutions!
+Given the set `[50, 8, 3, 7, 2, 10]`, reaching `556` has plenty of solutions:
 
 ```
 Input values: 50,8,3,7,2,10
 Target: 556
 Solutions:
-(8192) -> (3 - (7 - (8 * (50 + (2 * 10))))) = 556
-(137216) -> (3 - (7 - (10 * (8 - (2 - 50))))) = 556
-(149504) -> (8 / (2 / (10 - (3 * (7 - 50))))) = 556
-(174080) -> (10 - (7 * (2 * (8 + (3 - 50))))) = 556
-(177152) -> (10 - (2 * (7 * (8 + (3 - 50))))) = 556
-(202752) -> (10 - (7 * (2 * (3 + (8 - 50))))) = 556
-(205824) -> (10 - (2 * (7 * (3 + (8 - 50))))) = 556
-(219136) -> (3 - (7 + (10 * (2 - (8 + 50))))) = 556
-(260096) -> (3 - (7 - (10 * (50 - (2 - 8))))) = 556
-(296960) -> (10 + (7 * (2 * (50 - (3 + 8))))) = 556
-(300032) -> (10 + (2 * (7 * (50 - (3 + 8))))) = 556
-(325632) -> (10 - (7 * (2 * (3 - (50 - 8))))) = 556
-(328704) -> (10 - (2 * (7 * (3 - (50 - 8))))) = 556
-(342016) -> (3 - (7 + (10 * (2 - (50 + 8))))) = 556
-(405504) -> (8 - (2 + (50 * (10 - (7 * 3))))) = 556
-(419840) -> (10 + (7 * (2 * (50 - (8 + 3))))) = 556
-(422912) -> (10 + (2 * (7 * (50 - (8 + 3))))) = 556
-(448512) -> (10 - (7 * (2 * (8 - (50 - 3))))) = 556
-(451584) -> (10 - (2 * (7 * (8 - (50 - 3))))) = 556
-(528384) -> (8 - (2 + (50 * (10 - (3 * 7))))) = 556
-(581632) -> (8 / (2 / (10 + (3 * (50 - 7))))) = 556
-(625664) -> (8 * (50 + (3 * (10 - (7 / 2))))) = 556
-(663552) -> (3 - (7 - (10 * (50 + (8 - 2))))) = 556
-(698368) -> (3 - (7 - (10 * (8 + (50 - 2))))) = 556
-(720896) -> (3 - (7 - (8 * (50 + (10 * 2))))) = 556
-Permutations: 737280
+((((50 + 8) - 2) * 10) - (7 - 3)) = 556
+(((((50 + 8) - 2) * 10) + 3) - 7) = 556
+(((((50 + 8) - 2) * 10) - 7) + 3) = 556
+((((2 * 3) + 7) * (50 - 8)) + 10) = 556
+((((50 - 8) - 3) * (2 * 7)) + 10) = 556
+(((((50 - 8) - 3) * 7) * 2) + 10) = 556
+...
+Found: 62
 ```
 
 These equations can of course be independently verified by running them in the Chrome console (or evaluating them in Javascript).
 
 ## The solution
 
-The solution is rather simple (albeit a little brute force):
+Still brute force, but it follows the real rules:
 
-1. Heap's algorithm is used to calculate the permutations of the set (as most operators are *not* commutative)
-1. The set combinations are then recursively processed and each combination is evaluated. This is done by:
-  a. If `set` has one value, then return
-  b. Otherwise truncate the set and recurse, then add all operations to the result set and return
-1. All matching the target values are output
+1. Pick any two remaining numbers, combine them with `+`, `-`, `*` or `/`, and recurse on the result plus whatever is left. Any grouping, such as `(a + b) * (c + d)`, falls out of this.
+1. Every intermediate result must be a positive integer, as in the show: no negatives, no fractions.
+1. Every result along the way is a candidate, so a subset of the numbers can be used.
+1. Only the results closest to the target are kept, so an exact match is simply distance 0.
+1. Equivalent expressions (`a + b` vs `b + a`) are de-duplicated.
